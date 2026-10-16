@@ -8,6 +8,7 @@
 /* =====================================================================
    ธีมสีเข้มสำหรับฉายโปรเจกเตอร์: ตัวอักษรใหญ่ คอนทราสต์สูง
    สีหลัก: ส้ม = Private IP, เขียว = Public IP, ฟ้า = IPv6, แดง = Error
+   โหมด 3: ฟ้า = IPv6, ส้ม = IPv4 / Tunnel, ม่วง = Link-layer frame
    ===================================================================== */
 :root {
   --bg: #0a0f1e;
@@ -19,9 +20,11 @@
   --private: #ff9f43;
   --public: #2ee59d;
   --v6: #38d6ff;
+  --v4: var(--private);
   --err: #ff4d6d;
   --accent: #ffd166;
   --router: #b197fc;
+  --frame: var(--router);
   --mono: Consolas, "Cascadia Mono", "Courier New", monospace;
   --sans: "Leelawadee UI", "Noto Sans Thai", "Sarabun", Tahoma, "Segoe UI", sans-serif;
 }
@@ -106,10 +109,11 @@ main { flex: 1; min-height: 0; overflow: auto; }
 .view { display: none; }
 .view.active { display: block; }
 /* ผังเต็มความสูงของหน้าจอพอดี ส่วน Address Space ของโหมด 2 ล้นลงไปให้เลื่อนดู */
-#view-nat.active, #view-v6.active { height: 100%; }
+#view-nat.active, #view-v6.active, #view-tun.active { height: 100%; }
 .address-space-wrap { padding-bottom: 30px; }
 
-body[data-tab="v6"] .only-nat { display: none !important; }
+body:not([data-tab="nat"]) .only-nat { display: none !important; }
+body:not([data-tab="tun"]) .only-tun { display: none !important; }
 body:not([data-natmode="dynamic"]) .only-dynamic { display: none !important; }
 
 .stage-wrap {
@@ -122,8 +126,8 @@ body:not([data-natmode="dynamic"]) .only-dynamic { display: none !important; }
 }
 .stage-wrap svg { display: block; width: 100%; height: 100%; }
 
-/* โหมด 1: ผังซ้าย + ตาราง NAT ขวา + คำอธิบายด้านล่าง */
-.nat-grid {
+/* โหมด 1 และ 3: ผังซ้าย + แผงข้อมูลขวา + คำอธิบายด้านล่าง */
+.nat-grid, .tun-grid {
   height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(400px, 36vw);
@@ -456,6 +460,8 @@ svg text { font-family: var(--sans); fill: var(--text); }
 .fx-pulse.tone-v6 { stroke: var(--v6); }
 .fx-pulse.tone-router { stroke: var(--router); }
 .fx-pulse.tone-err { stroke: var(--err); }
+.fx-pulse.tone-v4 { stroke: var(--v4); }
+.fx-pulse.tone-l2 { stroke: var(--frame); }
 .drop-x path { stroke: var(--err); stroke-width: 8; stroke-linecap: round; }
 .drop-x text { fill: var(--err); font-size: 24px; font-weight: 800; }
 
@@ -465,6 +471,90 @@ svg text { font-family: var(--sans); fill: var(--text); }
   padding: 10px 20px; font-size: 18px; z-index: 100;
 }
 .toast.fail { border-color: var(--err); }
+
+/* ---------------- โหมด 3: IPv6 Tunneling ---------------- */
+.ipv4 { color: var(--v4); fill: var(--v4); }
+.l2   { color: var(--frame); fill: var(--frame); }
+.mode-tag.tun { background: var(--v6); color: #062430; }
+
+/* Packet Inspector: header ซ้อนกันเป็นชั้นๆ แบบเดียวกับกล่องในผัง */
+.inspector { display: flex; flex-direction: column; gap: 12px; }
+.insp-entry.fresh { animation: fade-in .45s ease-out; }
+.insp-label { font-size: 16px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.insp-empty { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.5; }
+.insp-layer {
+  margin-top: 6px;
+  padding: 4px 10px 8px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.insp-entry > .insp-layer { margin-top: 0; }
+.insp-layer.k-l2   { border-color: var(--frame); background: rgba(177, 151, 252, .10); }
+.insp-layer.k-v4   { border-color: var(--v4); background: rgba(255, 159, 67, .10); }
+.insp-layer.k-v6   { border-color: var(--v6); background: rgba(56, 214, 255, .08); }
+.insp-layer.k-data { border-color: #6b7aa6; background: var(--panel2); }
+.insp-layer .ttl { font-weight: 800; }
+.insp-layer.k-l2 > .insp-row .ttl { color: var(--frame); }
+.insp-layer.k-v4 > .insp-row .ttl { color: var(--v4); }
+.insp-layer.k-v6 > .insp-row .ttl { color: var(--v6); }
+.insp-layer.k-data > .insp-row .ttl { color: #c9d3ee; }
+.insp-row .mark-hl { color: var(--accent); }
+#tunHopWrap { flex-shrink: 0; }
+.hop-table td { font-size: 16px; line-height: 1.35; }
+.hop-table td.hop-name { font-weight: 700; white-space: nowrap; }
+/* จอเตี้ย (เช่น projector 1366×768): บีบแผงให้ตาราง hop ทั้ง 5 แถวยังพอดี */
+@media (max-height: 820px) {
+  .insp-layer { font-size: 15px; line-height: 1.4; padding: 3px 8px 6px; }
+  .hop-table th, .hop-table td { padding: 4px 6px; }
+  .hop-table td { font-size: 14px; }
+  .hop-table th small { display: none; }
+}
+
+/* ผัง Router A–F */
+.tun-zone rect { fill: rgba(154, 167, 199, .04); stroke: var(--line); stroke-width: 2; stroke-dasharray: 10 8; }
+.tun-zone text { fill: var(--muted); }
+.tun-layer-links text, .tun-layer-nodes text { paint-order: stroke; stroke: #0d1428; stroke-width: 8px; stroke-linejoin: round; }
+.tun-link { stroke-width: 6; stroke-linecap: round; }
+.tun-link.k-v6 { stroke: #1f7f9c; }
+.tun-link.k-v4 { stroke: #a8692f; }
+.tun-link.k-eth { stroke: var(--frame); }
+.tun-link-label { font-size: 18px; font-weight: 800; }
+.tun-pipe .pipe-body { fill: rgba(255, 159, 67, .10); stroke: var(--v4); stroke-width: 3; stroke-dasharray: 14 10; }
+.tun-pipe.active .pipe-body { fill: rgba(255, 159, 67, .22); animation: pipe-flow .8s linear infinite; }
+@keyframes pipe-flow { to { stroke-dashoffset: -24; } }
+.v4net .cloud-body { fill: #2a1d12; stroke: var(--v4); }
+.v4net text { fill: var(--v4); font-size: 20px; font-weight: 800; }
+
+.tun-node.stk-v6 .router-body,
+.tun-node.stk-dual .router-body { fill: #0e2a38; stroke: var(--v6); }
+.tun-node.stk-v4 .router-body { fill: #33210f; stroke: var(--v4); }
+.tun-node .dual-ring { fill: none; stroke: var(--v4); stroke-width: 4; }
+.tun-node .hot-ring { fill: none; stroke: var(--accent); stroke-width: 4; opacity: 0; }
+.tun-node.hot .hot-ring { animation: hot-ring 1.1s ease-in-out infinite; }
+@keyframes hot-ring { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+
+/* Datagram แบบกล่องซ้อนกัน (สีพื้นทึบ เพื่อไม่ให้เห็นเส้น link ทะลุ) */
+.dg-box { stroke-width: 3; }
+.dg-box.k-l2   { fill: #252541; stroke: var(--frame); }
+.dg-box.k-v4   { fill: #2c2323; stroke: var(--v4); }
+.dg-box.k-v6   { fill: #102739; stroke: var(--v6); }
+.dg-box.k-data { fill: var(--panel2); stroke: #6b7aa6; }
+.dg-text { font-family: var(--mono); font-weight: 700; fill: var(--text); white-space: pre; }
+.dg-text .ttl { font-weight: 800; }
+.dg-text.k-l2 .ttl { fill: var(--frame); }
+.dg-text.k-v4 .ttl { fill: var(--v4); }
+.dg-text.k-v6 .ttl { fill: var(--v6); }
+.dg-text.k-data .ttl { fill: #c9d3ee; }
+
+.tun-q rect { fill: rgba(120, 16, 36, .95); stroke: var(--err); stroke-width: 3; }
+.tun-q text { fill: #fff; font-size: 20px; font-weight: 700; }
+.tun-q .q-mark { font-size: 32px; font-weight: 900; }
+.tun-anno text { font-size: 21px; font-weight: 800; paint-order: stroke; stroke: #0d1428; stroke-width: 7px; stroke-linejoin: round; }
 
 /* ---------------- โหมดนำเสนอ ---------------- */
 body.present .extra { display: none !important; }
@@ -488,8 +578,8 @@ body.present .speed { font-size: 15px; }
 body.present .speed input { width: 90px; }
 body.present.idle .app-header { opacity: 0; pointer-events: none; }
 body.present.idle { cursor: none; }
-body.present .nat-grid, body.present .cmp-wrap { padding-top: 12px; }
-body.present .nat-grid { grid-template-columns: minmax(0, 1fr) minmax(380px, 30vw); }
+body.present .nat-grid, body.present .cmp-wrap, body.present .tun-grid { padding-top: 12px; }
+body.present .nat-grid, body.present .tun-grid { grid-template-columns: minmax(0, 1fr) minmax(380px, 30vw); }
 body.present .caption { font-size: 26px; }
 
 @media (max-width: 1300px) {
@@ -509,12 +599,19 @@ body.present .caption { font-size: 26px; }
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="nat" role="tab">โหมด 1: NAT / PAT</button>
     <button class="tab" data-tab="v6" role="tab">โหมด 2: IPv6 เทียบกับ NAT</button>
+    <button class="tab" data-tab="tun" role="tab">โหมด 3: IPv6 Tunneling</button>
   </nav>
   <div class="toolbar">
     <div class="seg only-nat" id="natModeSeg" title="เลือกประเภท NAT">
       <button data-mode="static">Static NAT</button>
       <button data-mode="dynamic">Dynamic NAT</button>
       <button data-mode="pat" class="active">PAT (Overload)</button>
+    </div>
+    <div class="seg only-tun" id="tunSceneSeg" title="เลือก Scene ตามสไลด์">
+      <button data-scene="0">4-58<span class="extra"> Transition</span></button>
+      <button data-scene="1">4-59<span class="extra"> Ethernet vs IPv4</span></button>
+      <button data-scene="2">4-60<span class="extra"> Encapsulation</span></button>
+      <button data-scene="3">4-61<span class="extra"> Physical vs Logical</span></button>
     </div>
     <label class="speed">ความเร็ว
       <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1">
@@ -670,6 +767,53 @@ body.present .caption { font-size: 26px; }
       <h3>เปรียบเทียบให้เห็นภาพ</h3>
       <div class="analogies" id="analogies"></div>
     </section>
+    </div>
+  </section>
+
+  <!-- ===================== โหมด 3: IPv6 Tunneling (สไลด์ 4-58 ถึง 4-61) ===================== -->
+  <section class="view" id="view-tun">
+    <div class="tun-grid">
+      <div class="stage-wrap">
+        <svg id="tunSvg" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
+      <aside class="panel">
+        <h2>Packet Inspector <span class="mode-tag tun" id="tunSceneTag">สไลด์ 4-58</span></h2>
+        <p class="mode-explain extra" id="tunExplain"></p>
+        <div class="inspector" id="tunInspector"></div>
+        <div class="table-scroll" id="tunHopWrap" hidden>
+          <table class="nat-table hop-table" id="tunHopTable">
+            <thead>
+              <tr>
+                <th>Hop</th>
+                <th>บนสาย</th>
+                <th>Outer header<small>IPv4 (เฉพาะใน tunnel)</small></th>
+                <th>Inner header<small>IPv6</small></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--v6)"></i>IPv6</span>
+          <span><i style="background:var(--v4)"></i>IPv4 / Tunnel</span>
+          <span><i style="background:var(--frame)"></i>Link-layer frame</span>
+        </div>
+        <p class="hint extra">
+          คีย์ลัด: <kbd>1</kbd>–<kbd>4</kbd> เล่น Scene ตามสไลด์ ·
+          <kbd>A</kbd> เล่นอัตโนมัติ · <kbd>Space</kbd> ขั้นถัดไป · <kbd>S</kbd> เล่นทีละขั้น ·
+          <kbd>R</kbd> รีเซ็ต · <kbd>P</kbd> โหมดนำเสนอ
+        </p>
+      </aside>
+
+      <div class="caption" id="tunCaption">
+        <span class="step-badge" hidden></span>
+        <span class="caption-text"></span>
+        <span class="caption-side">
+          <span class="caption-wait" hidden>กด Space / ขั้นถัดไป ▶</span>
+          <span class="caption-queue" hidden></span>
+        </span>
+      </div>
     </div>
   </section>
 </main>
@@ -963,6 +1107,18 @@ function svgEl(tag, attrs = {}, parent = null) {
   return el;
 }
 
+// ไอคอน Router (วงกลม + ลูกศรสองทาง) ใช้ร่วมกันทุกโหมด — ขนาดมาตรฐานคือรัศมี 44
+function drawRouterIcon(parent, x, y, r = 44) {
+  svgEl('circle', { cx: x, cy: y, r, class: 'router-body' }, parent);
+  svgEl('path', {
+    d: 'M-24,-11 H20 M11,-19 L20,-11 L11,-3 M24,11 H-20 M-11,3 L-20,11 L-11,19',
+    transform: `translate(${x},${y}) scale(${r / 44})`,
+    class: 'router-arrows',
+  }, parent);
+}
+
+const CLOUD_PATH = 'M-72,42 C-112,42 -112,-8 -76,-12 C-80,-48 -30,-60 -10,-34 C4,-62 62,-58 64,-20 C104,-24 110,42 72,42 Z';
+
 const LAYOUTS = {
   horizontal: {
     name: 'horizontal',
@@ -1090,12 +1246,7 @@ class SvgRenderer {
   drawRouter() {
     const { router: r, routerText: rt } = this.L;
     const g = svgEl('g', { class: 'router' }, this.layers.nodes);
-    svgEl('circle', { cx: r.x, cy: r.y, r: 44, class: 'router-body' }, g);
-    svgEl('path', {
-      d: `M${r.x - 24},${r.y - 11} H${r.x + 20} M${r.x + 11},${r.y - 19} L${r.x + 20},${r.y - 11} L${r.x + 11},${r.y - 3}
-          M${r.x + 24},${r.y + 11} H${r.x - 20} M${r.x - 11},${r.y + 3} L${r.x - 20},${r.y + 11} L${r.x - 11},${r.y + 19}`,
-      class: 'router-arrows',
-    }, g);
+    drawRouterIcon(g, r.x, r.y);
 
     const lines = this.isV6
       ? [['Router', 't-name'], [`LAN ${CONFIG.routerLan6}`, 't-ip v6'], ['ไม่มี NAT', 't-note']]
@@ -1115,10 +1266,7 @@ class SvgRenderer {
   drawCloud() {
     const c = this.L.cloud;
     const g = svgEl('g', { class: 'cloud', transform: `translate(${c.x},${c.y})` }, this.layers.nodes);
-    svgEl('path', {
-      d: 'M-72,42 C-112,42 -112,-8 -76,-12 C-80,-48 -30,-60 -10,-34 C4,-62 62,-58 64,-20 C104,-24 110,42 72,42 Z',
-      class: 'cloud-body',
-    }, g);
+    svgEl('path', { d: CLOUD_PATH, class: 'cloud-body' }, g);
     svgEl('text', { x: 0, y: 14, 'text-anchor': 'middle', class: 't-name' }, g).textContent = 'Internet';
   }
 
@@ -1956,7 +2104,855 @@ const Zoom = {
 };
 
 /* =====================================================================
-   ส่วนที่ 9: UI CONTROLLER — ผูกปุ่ม แท็บ คีย์ลัด และโหมดนำเสนอ
+   ส่วนที่ 9: TUNNEL MODEL — logic ของ IPv6 Tunneling ล้วน ไม่แตะ DOM / ไม่วาดภาพ
+   - คำนวณว่าแต่ละ hop บนสายจริงมี header อะไรบ้าง และ Router แต่ละตัวต้องทำอะไร
+   - ทางเข้า/ทางออกของ tunnel หาจากชนิด stack ของ Router (ไม่ได้กำหนดตายตัว)
+   ===================================================================== */
+const IPPROTO_IPV6 = 41;   // ค่า Protocol field ใน IPv4 header เมื่อ payload เป็น IPv6 datagram
+
+// เส้นทางตามสไลด์ 4-61 — stack: v6 = IPv6 อย่างเดียว, dual = IPv6/v4, v4 = IPv4 อย่างเดียว
+const TUN_NODES = [
+  { id: 'A', stack: 'v6' },
+  { id: 'B', stack: 'dual' },
+  { id: 'C', stack: 'v4' },
+  { id: 'D', stack: 'v4' },
+  { id: 'E', stack: 'dual' },
+  { id: 'F', stack: 'v6' },
+];
+const TUN_FLOW = { flow: 'X', src: 'A', dst: 'F' };
+
+// คืน { ok, hops, actions, tunnels }
+// - hops[i].layers เรียงจากชั้นนอกสุดเข้าไป เช่น [IPv4 header, IPv6 header, data]
+// - actions[id]: 'send' | 'encap' | 'forward4' | 'forward6' | 'decap' | 'receive'
+function computeTunnelHops(nodes = TUN_NODES, flow = TUN_FLOW) {
+  const inner = [{ kind: 'v6', flow: flow.flow, src: flow.src, dst: flow.dst }, { kind: 'data' }];
+  const hops = [];
+  const actions = {};
+  const tunnels = [];
+  let tunnel = null;
+
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i], b = nodes[i + 1];
+    if (!tunnel && (a.stack === 'v4' || b.stack === 'v4')) {
+      // ทางเข้า tunnel ต้องเป็น Router ที่รู้จักทั้ง IPv6 และ IPv4
+      if (a.stack !== 'dual') return { ok: false, reason: 'no-entry', at: a.id };
+      let j = i + 1;
+      while (j < nodes.length && nodes[j].stack === 'v4') j++;
+      // ทางออก = Router ตัวแรกหลังช่วง IPv4 ซึ่งต้องเป็น dual-stack ด้วย
+      if (j === nodes.length || nodes[j].stack !== 'dual') return { ok: false, reason: 'no-exit', at: nodes[j - 1].id };
+      tunnel = { entry: a.id, exit: nodes[j].id };
+      tunnels.push(tunnel);
+      actions[a.id] = 'encap';
+    }
+    const outer = tunnel ? [{ kind: 'v4', src: tunnel.entry, dst: tunnel.exit, proto: IPPROTO_IPV6 }] : [];
+    hops.push({ from: a.id, to: b.id, inTunnel: !!tunnel, layers: [...outer, ...inner].map(l => ({ ...l })) });
+    if (tunnel && b.id === tunnel.exit) {
+      actions[b.id] = 'decap';
+      tunnel = null;
+    }
+  }
+
+  nodes.forEach((n, i) => {
+    if (actions[n.id]) return;
+    if (i === 0) actions[n.id] = 'send';
+    else if (i === nodes.length - 1) actions[n.id] = 'receive';
+    else actions[n.id] = n.stack === 'v4' ? 'forward4' : 'forward6';
+  });
+  return { ok: true, hops, actions, tunnels };
+}
+
+// ชุดทดสอบ logic ของ Tunnel (รันพร้อม natSelfTest เมื่อเปิดด้วย ?test)
+function tunnelSelfTest() {
+  const results = [];
+  const check = (name, cond) => results.push({ name, pass: !!cond });
+  const kinds = h => h.layers.map(l => l.kind).join(',');
+
+  const r = computeTunnelHops();
+  check('Tunnel: เส้นทาง A→F มี 5 hop', r.ok && r.hops.length === 5);
+  check('Tunnel: A-to-B เป็น IPv6 ล้วน', kinds(r.hops[0]) === 'v6,data' && !r.hops[0].inTunnel);
+  check('Tunnel: B-to-C, C-to-D, D-to-E = IPv6 inside IPv4 (src B, dest E, protocol 41)',
+    r.hops.slice(1, 4).every(h => kinds(h) === 'v4,v6,data' && h.layers[0].src === 'B' && h.layers[0].dst === 'E' && h.layers[0].proto === 41));
+  check('Tunnel: E-to-F กลับเป็น IPv6 ล้วน', kinds(r.hops[4]) === 'v6,data' && !r.hops[4].inTunnel);
+  check('Tunnel: IPv6 header ข้างใน (flow X, src A, dest F) ไม่เปลี่ยนทุก hop', r.hops.every(h => {
+    const v6 = h.layers.find(l => l.kind === 'v6');
+    return v6.flow === 'X' && v6.src === 'A' && v6.dst === 'F';
+  }));
+  check('Tunnel: B encap, C/D forward ด้วย IPv4, E decap',
+    r.actions.B === 'encap' && r.actions.C === 'forward4' && r.actions.D === 'forward4' && r.actions.E === 'decap');
+
+  const plain = computeTunnelHops(['A', 'B', 'E', 'F'].map(id => ({ id, stack: 'v6' })));
+  check('Tunnel: เส้นทาง IPv6 ล้วน ไม่ต้องมี tunnel', plain.ok && plain.tunnels.length === 0 && plain.hops.every(h => !h.inTunnel));
+
+  const noEntry = computeTunnelHops([{ id: 'A', stack: 'v6' }, { id: 'C', stack: 'v4' }, { id: 'F', stack: 'v6' }]);
+  check('Tunnel: Router IPv6 ล้วนต่อกับ IPv4 ตรงๆ → สร้าง tunnel ไม่ได้', !noEntry.ok && noEntry.reason === 'no-entry');
+
+  const noExit = computeTunnelHops([{ id: 'B', stack: 'dual' }, { id: 'C', stack: 'v4' }, { id: 'F', stack: 'v6' }]);
+  check('Tunnel: ปลายทางฝั่ง IPv4 ไม่มี dual-stack → ไม่มีทางออก tunnel', !noExit.ok && noExit.reason === 'no-exit');
+
+  console.table(results);
+  return results;
+}
+
+/* =====================================================================
+   ส่วนที่ 10: TUNNEL RENDERER — วาดผัง Router, Tunnel และ Datagram แบบกล่องซ้อนกัน
+   - Datagram วาดแบบเดียวกับสไลด์: header ชั้นนอกอยู่บนสุด ชั้นในซ้อนอยู่ข้างใน
+   - layer ที่ใช้วาด: { kind: 'l2' | 'v4' | 'v6' | 'data', rows: [...] }
+     แต่ละแถวเป็น string หรือ [[ข้อความ, class], ...] (class 'ttl' = ชื่อชั้น, 'mark-hl' = ไฮไลต์)
+   ===================================================================== */
+const TUN_W = 1200, TUN_H = 680;
+const KIND_VAR = { l2: '--frame', v4: '--v4', v6: '--v6', data: '--muted' };
+const STACK_LABEL = { v6: [['IPv6', 'v6']], v4: [['IPv4', 'ipv4']], dual: [['IPv6', 'v6'], ['/v4', 'ipv4']] };
+
+const rowSegs = row => (typeof row === 'string' ? [[row, null]] : row);
+const rowLen = row => rowSegs(row).reduce((n, [t]) => n + t.length, 0);
+
+class TunnelRenderer {
+  constructor(svg, animator) {
+    this.svg = svg;
+    this.anim = animator;
+    svg.setAttribute('viewBox', `0 0 ${TUN_W} ${TUN_H}`);
+  }
+
+  /* ---------- ภาพนิ่งของแต่ละ Scene ---------- */
+  // spec: { zones: [{x,y,w,h,label}], nodes: [{key,x,y,name,stack,hidden}], links: [{a,b,kind,label}] }
+  // node ที่ hidden ไม่ถูกวาด แต่ใช้เป็นจุดผ่านของ Packet ได้
+  drawScene(spec) {
+    this.svg.textContent = '';
+    this.layers = {};
+    for (const name of ['zones', 'links', 'nodes', 'fx', 'packets']) {
+      this.layers[name] = svgEl('g', { class: `tun-layer-${name}` }, this.svg);
+    }
+    this.points = {};
+    this.nodeEls = {};
+    this.pipes = {};
+    for (const z of spec.zones) this.drawZone(z);
+    for (const n of spec.nodes) this.points[n.key] = { x: n.x, y: n.y };
+    for (const l of spec.links) this.drawLink(l);
+    for (const n of spec.nodes) if (!n.hidden) this.drawNode(n);
+  }
+
+  drawZone(z) {
+    const g = svgEl('g', { class: 'tun-zone' }, this.layers.zones);
+    svgEl('rect', { x: z.x, y: z.y, width: z.w, height: z.h, rx: 18 }, g);
+    svgEl('text', { x: z.x + 16, y: z.y + 28, class: 't-zone' }, g).textContent = z.label;
+  }
+
+  // kind: 'v6' | 'v4' | 'eth' = สายปกติ, 'v4net' = ก้อน IPv4 network, 'tunnel' = ท่อ IPv4 tunnel
+  drawLink({ a, b, kind, label }) {
+    const p = this.points[a], q = this.points[b];
+    const g = this.layers.links;
+    const mx = (p.x + q.x) / 2;
+    if (kind === 'tunnel') {
+      const pipe = svgEl('g', { class: 'tun-pipe' }, g);
+      svgEl('rect', { x: p.x, y: p.y - 26, width: q.x - p.x, height: 52, rx: 26, class: 'pipe-body' }, pipe);
+      svgEl('text', { x: mx, y: p.y + 54, 'text-anchor': 'middle', class: 'tun-link-label ipv4' }, pipe).textContent = label;
+      this.pipes[`${a}-${b}`] = pipe;
+      return;
+    }
+    svgEl('line', { x1: p.x, y1: p.y, x2: q.x, y2: q.y, class: `tun-link k-${kind === 'v4net' ? 'v4' : kind}` }, g);
+    if (kind === 'v4net') {
+      const cloud = svgEl('g', { class: 'v4net' }, g);
+      svgEl('path', { d: CLOUD_PATH, class: 'cloud-body', transform: `translate(${mx},${p.y}) scale(1.45)` }, cloud);
+      svgEl('text', { x: mx, y: p.y + 14, 'text-anchor': 'middle' }, cloud).textContent = label;
+    } else if (label) {
+      svgEl('text', { x: mx, y: p.y + 36, 'text-anchor': 'middle', class: `tun-link-label ${kind === 'eth' ? 'l2' : ''}` }, g)
+        .textContent = label;
+    }
+  }
+
+  drawNode(n) {
+    const g = svgEl('g', { class: `tun-node stk-${n.stack}` }, this.layers.nodes);
+    svgEl('circle', { cx: n.x, cy: n.y, r: 46, class: 'hot-ring' }, g);
+    if (n.stack === 'dual') svgEl('circle', { cx: n.x, cy: n.y, r: 38, class: 'dual-ring' }, g);
+    drawRouterIcon(g, n.x, n.y, 32);
+    const t = svgEl('text', { x: n.x, y: n.y + 62, 'text-anchor': 'middle' }, g);
+    svgEl('tspan', { class: 't-name' }, t).textContent = n.name + ' ';
+    for (const [txt, cls] of STACK_LABEL[n.stack]) svgEl('tspan', { class: `t-ip ${cls}` }, t).textContent = txt;
+    this.nodeEls[n.key] = g;
+  }
+
+  /* ---------- Datagram (Packet) ---------- */
+  // anchor: 'above' = กล่องลอยเหนือซอง Packet ที่วิ่งบนสาย, 'bottom' = กล่องใหญ่ที่ยึดขอบล่างไว้ที่จุด at
+  createPacket(key, layers, { at = null, anchor = 'above', fs = 18, envelope = true } = {}) {
+    const p = at || this.points[key];
+    const g = svgEl('g', { class: 'packet' }, this.layers.packets);
+    let body = null;
+    if (envelope) {
+      body = svgEl('g', { class: 'pkt-body' }, g);
+      svgEl('rect', { x: -21, y: -15, width: 42, height: 30, rx: 5 }, body);
+      svgEl('path', { d: 'M-21,-13 L0,3 L21,-13' }, body);
+    }
+    const card = svgEl('g', {}, g);
+    const pkt = { g, body, card, anchor, fs, x: p.x, y: p.y, scale: 1, layers: [], parts: [], w: 0, h: 0, cx: 0, cy: 0 };
+    this.setLayers(pkt, layers);
+    return pkt;
+  }
+
+  // วาดกล่องใหม่ทั้งหมด: คำนวณขนาดจากชั้นในสุดออกมา เพื่อให้ชั้นนอกครอบชั้นในได้พอดี
+  // (ความกว้างตัวอักษรประมาณจากฟอนต์ monospace จึงคำนวณได้แม้แท็บยังซ่อนอยู่)
+  setLayers(pkt, layers) {
+    const { fs } = pkt;
+    const LH = Math.round(fs * 1.3), PAD = Math.round(fs * 0.5), CW = fs * 0.6;
+    const heights = [];
+    let w = 0, h = 0;
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const rows = layers[i].rows;
+      w = Math.max(Math.max(...rows.map(rowLen)) * CW, w) + PAD * 2;
+      h = PAD + rows.length * LH + h + PAD;
+      heights[i] = h;
+    }
+
+    pkt.card.textContent = '';
+    let x = 0, y = 0, bw = w;
+    pkt.parts = layers.map((L, i) => {
+      const box = { x, y, w: bw, h: heights[i] };
+      const rect = svgEl('rect', { x, y, width: bw, height: heights[i], rx: 8, class: `dg-box k-${L.kind}` }, pkt.card);
+      const head = svgEl('g', {}, pkt.card);
+      L.rows.forEach((row, r) => {
+        const t = svgEl('text', {
+          x: x + PAD, y: y + PAD + (r + 1) * LH - Math.round(LH * 0.3),
+          'font-size': fs, class: `dg-text k-${L.kind}`,
+        }, head);
+        for (const [txt, cls] of rowSegs(row)) svgEl('tspan', { class: cls }, t).textContent = txt;
+      });
+      x += PAD;
+      y += PAD + L.rows.length * LH;
+      bw -= PAD * 2;
+      return { rect, head, box };
+    });
+    pkt.layers = layers;
+    pkt.w = w;
+    pkt.h = heights[0];
+    pkt.g.style.setProperty('--pc', `var(${KIND_VAR[layers[0].kind]})`);
+    this.positionPacket(pkt, pkt.x, pkt.y);
+  }
+
+  positionPacket(pkt, x, y) {
+    pkt.x = x;
+    pkt.y = y;
+    if (pkt.body) pkt.body.setAttribute('transform', `translate(${x},${y}) scale(${pkt.scale})`);
+    let cy = pkt.anchor === 'bottom' ? y - pkt.h : y - 30 - pkt.h;
+    if (cy < 4) cy = y + 30;
+    pkt.cx = Math.max(4, Math.min(TUN_W - pkt.w - 4, x - pkt.w / 2));
+    pkt.cy = cy;
+    pkt.card.setAttribute('transform', `translate(${pkt.cx},${pkt.cy})`);
+  }
+
+  // ตำแหน่งจริงในผังของกล่องชั้นที่ i (ใช้วางคำอธิบายข้างกล่อง)
+  layerBox(pkt, i) {
+    const b = pkt.parts[i].box;
+    return { x: pkt.cx + b.x, y: pkt.cy + b.y, w: b.w, h: b.h };
+  }
+
+  setTone(pkt, color) {
+    pkt.g.style.setProperty('--pc', `var(--${color})`);
+  }
+
+  appear(pkt) {
+    pkt.scale = 0.2;
+    return this.anim.tween(450, t => {
+      pkt.scale = 0.2 + 0.8 * t;
+      pkt.g.style.opacity = t;
+      this.positionPacket(pkt, pkt.x, pkt.y);
+    }, ease.out);
+  }
+
+  // ค่อยๆ แสดงข้อความในกล่องทีละแถว จากชั้นนอกเข้าไปชั้นใน
+  async revealRows(pkt) {
+    const texts = [...pkt.card.querySelectorAll('text')];
+    texts.forEach(t => { t.style.opacity = 0; });
+    for (const t of texts) await this.anim.tween(380, k => { t.style.opacity = k; }, ease.out);
+  }
+
+  // เคลื่อน Packet ตามเส้นทางของ node เช่น ['pB', 'pC']
+  move(pkt, keys) {
+    const pts = keys.map(k => this.points[k]);
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+      segs.push({ a: pts[i], b: pts[i + 1], len, start: total });
+      total += len;
+    }
+    return this.anim.tween(total / 0.36, t => {
+      const d = t * total;
+      const s = segs.find(sg => d <= sg.start + sg.len) || segs[segs.length - 1];
+      const u = s.len ? (d - s.start) / s.len : 1;
+      this.positionPacket(pkt, s.a.x + (s.b.x - s.a.x) * u, s.a.y + (s.b.y - s.a.y) * u);
+    });
+  }
+
+  // Encapsulation: ขอบกล่องชั้นนอกค่อยๆ ลากล้อมรอบ แล้ว header ชั้นนอกค่อยๆ ปรากฏ
+  async encapsulate(pkt, layers) {
+    this.setLayers(pkt, layers);
+    const { rect, head } = pkt.parts[0];
+    rect.setAttribute('pathLength', 100);
+    rect.style.strokeDasharray = '100';
+    head.style.opacity = 0;
+    await this.anim.tween(800, t => {
+      rect.style.strokeDashoffset = 100 * (1 - t);
+      rect.style.fillOpacity = t;
+      head.style.opacity = Math.max(0, t * 2 - 1);
+    }, ease.inOut);
+    rect.removeAttribute('pathLength');
+    rect.style.strokeDasharray = rect.style.strokeDashoffset = rect.style.fillOpacity = '';
+  }
+
+  // Decapsulation: header ชั้นนอกเลื่อนขึ้นแล้วจางหาย เหลือ datagram ข้างใน
+  async decapsulate(pkt, layers) {
+    const { rect, head } = pkt.parts[0];
+    await this.anim.tween(650, t => {
+      rect.style.opacity = 1 - t;
+      head.style.opacity = 1 - t;
+      head.setAttribute('transform', `translate(0,${-24 * t})`);
+    }, ease.inOut);
+    this.setLayers(pkt, layers);
+  }
+
+  async shake(pkt) {
+    const x0 = pkt.x, y0 = pkt.y;
+    await this.anim.tween(650, t => {
+      this.positionPacket(pkt, x0 + Math.sin(t * Math.PI * 8) * 12 * (1 - t), y0);
+    }, ease.linear);
+  }
+
+  fade(pkt) {
+    return this.anim.tween(450, t => { pkt.g.style.opacity = 1 - t; }, ease.linear)
+      .then(() => pkt.g.remove());
+  }
+
+  pulse(key, tone) {
+    const c = this.points[key];
+    const ring = svgEl('circle', { cx: c.x, cy: c.y, r: 30, class: `fx-pulse tone-${tone}` }, this.layers.fx);
+    this.anim.tween(800, t => {
+      ring.setAttribute('r', 30 + 60 * t);
+      ring.style.opacity = 1 - t;
+    }, ease.out).then(() => ring.remove());
+  }
+
+  // กล่องแจ้งปัญหาสีแดง: ขอบซ้ายอยู่ที่ x กึ่งกลางแนวตั้งอยู่ที่ y
+  question(x, y, text) {
+    const g = svgEl('g', { class: 'tun-q' }, this.layers.fx);
+    const rect = svgEl('rect', { x, y: y - 26, height: 52, rx: 12 }, g);
+    svgEl('text', { x: x + 16, y: y + 11, class: 'q-mark' }, g).textContent = '?';
+    const t = svgEl('text', { x: x + 46, y: y + 7 }, g);
+    t.textContent = text;
+    let w = 0;
+    try { w = t.getBBox().width; } catch (e) { w = 0; }
+    rect.setAttribute('width', (w || text.length * 11) + 64);
+    g.style.opacity = 0;
+    this.anim.tween(250, k => { g.style.opacity = k; }, ease.out);
+    return g;
+  }
+
+  // ข้อความอธิบายหลายบรรทัด lines: [[[ข้อความ, class], ...], ...]
+  annotate(x, y, lines, anchor = 'start') {
+    const g = svgEl('g', { class: 'tun-anno' }, this.layers.fx);
+    lines.forEach((segs, i) => {
+      const t = svgEl('text', { x, y: y + i * 28, 'text-anchor': anchor }, g);
+      for (const [txt, cls] of segs) svgEl('tspan', { class: cls }, t).textContent = txt;
+    });
+    g.style.opacity = 0;
+    this.anim.tween(400, k => { g.style.opacity = k; }, ease.out);
+    return g;
+  }
+
+  setPipe(a, b, on) {
+    this.pipes[`${a}-${b}`]?.classList.toggle('active', on);
+  }
+
+  setHot(keys, on) {
+    for (const k of keys) this.nodeEls[k]?.classList.toggle('hot', on);
+  }
+}
+
+/* =====================================================================
+   ส่วนที่ 11: TUNNEL SCENES — ฉากตามสไลด์ 4-58 ถึง 4-61 + แผง Packet Inspector
+   แต่ละฉากคืน steps ในรูปแบบเดียวกับ buildNatFlow เพื่อใช้ StepRunner ตัวเดียวกัน
+   ===================================================================== */
+
+// แปลง header จาก TUNNEL MODEL เป็นแถวข้อความในกล่อง datagram
+// - detail: 'full' = แสดง field ทั้งหมด, 'mini' = แสดงแค่ชื่อชั้น (Packet เล็กในฉาก 4-58)
+// - hl: ชั้นที่ต้องไฮไลต์ src/dest เช่น ['v6']
+function tunLayers(layers, { detail = 'full', hl = [] } = {}) {
+  const out = [];
+  for (const L of layers) {
+    if (L.kind === 'l2') {
+      out.push({ kind: 'l2', rows: [[['Link-layer frame', 'ttl']]] });
+    } else if (L.kind === 'data') {
+      if (detail === 'full') out.push({ kind: 'data', rows: [[['data', 'ttl']]] });
+    } else {
+      const name = L.kind === 'v4' ? 'IPv4' : 'IPv6';
+      if (detail === 'mini') {
+        out.push({ kind: L.kind, rows: [[[`${name} datagram`, 'ttl']]] });
+      } else {
+        const extra = L.kind === 'v4' ? `protocol: ${L.proto}` : `flow: ${L.flow}`;
+        const mark = hl.includes(L.kind) ? 'mark-hl' : null;
+        out.push({ kind: L.kind, rows: [[[`${name}  `, 'ttl'], [extra, null]], [[`src: ${L.src}  dest: ${L.dst}`, mark]]] });
+      }
+    }
+  }
+  return out;
+}
+
+// Datagram ขนาดใหญ่ในฉาก 4-58 (ข้อความตามรูปในสไลด์)
+const BIG_V6 = [
+  { kind: 'v6', rows: [[['IPv6 datagram', 'ttl']], 'IPv6 header fields', 'IPv6 source, dest addr'] },
+  { kind: 'data', rows: [[['UDP/TCP payload', 'ttl']]] },
+];
+const BIG_V4 = [
+  { kind: 'v4', rows: [[['IPv4 datagram', 'ttl']], 'IPv4 header fields', 'IPv4 source, dest addr'] },
+  ...BIG_V6,
+];
+
+const TUN_ZONE_TOP = { x: 14, y: 14, w: 1172, h: 322 };
+const TUN_ZONE_BOTTOM = { x: 14, y: 348, w: 1172, h: 318 };
+const TUN_ROW = { top: 266, bottom: 596 };
+const tunRow = (prefix, y, list) => list.map(([name, x, stack]) => ({ key: prefix + name, name, x, y, stack }));
+
+function layout4_58() {
+  return {
+    zones: [
+      { x: 14, y: 14, w: 1172, h: 276, label: 'เครือข่ายช่วงเปลี่ยนผ่าน: Router IPv4 และ IPv6 ปนกัน (ไม่มี "flag day")' },
+      { x: 14, y: 302, w: 1172, h: 364, label: 'โครงสร้าง Datagram' },
+    ],
+    nodes: tunRow('s', 205, [['R1', 200, 'dual'], ['R2', 600, 'v4'], ['R3', 1000, 'dual']]),
+    links: [{ a: 'sR1', b: 'sR2', kind: 'v4' }, { a: 'sR2', b: 'sR3', kind: 'v4' }],
+  };
+}
+
+// ผัง 2 แถวของสไลด์ 4-59 / 4-60: แถวบน B–E ต่อด้วย Ethernet, แถวล่าง B–E คั่นด้วย IPv4
+function layoutTwoRows(bottomKind, bottomZone, bottomLabel) {
+  return {
+    zones: [
+      { ...TUN_ZONE_TOP, label: 'Ethernet เชื่อม IPv6 Router 2 ตัว (กรณีปกติ)' },
+      { ...TUN_ZONE_BOTTOM, label: bottomZone },
+    ],
+    nodes: [
+      ...tunRow('t', TUN_ROW.top, [['A', 110, 'v6'], ['B', 380, 'v6'], ['E', 820, 'v6'], ['F', 1090, 'v6']]),
+      ...tunRow('b', TUN_ROW.bottom, [['A', 110, 'v6'], ['B', 380, 'dual'], ['E', 820, 'dual'], ['F', 1090, 'v6']]),
+      { key: 'bGate', x: 445, y: TUN_ROW.bottom, hidden: true },
+    ],
+    links: [
+      { a: 'tA', b: 'tB', kind: 'v6' },
+      { a: 'tB', b: 'tE', kind: 'eth', label: 'Ethernet' },
+      { a: 'tE', b: 'tF', kind: 'v6' },
+      { a: 'bA', b: 'bB', kind: 'v6' },
+      { a: 'bB', b: 'bE', kind: bottomKind, label: bottomLabel },
+      { a: 'bE', b: 'bF', kind: 'v6' },
+    ],
+  };
+}
+
+// สไลด์ 4-61: แถวล่าง = Physical view (A–F ตาม TUN_NODES), แถวบน = Logical view
+// ใน Logical view Router IPv4 ถูกซ่อนไว้ในท่อ tunnel (เหลือแค่จุดผ่าน ให้ Packet วิ่งตรงกับแถวล่าง)
+function layout4_61() {
+  const X = [110, 330, 510, 690, 870, 1090];
+  const { tunnels } = computeTunnelHops();
+  const phys = TUN_NODES.map((n, i) => ({ key: 'p' + n.id, name: n.id, x: X[i], y: TUN_ROW.bottom, stack: n.stack }));
+  const logi = TUN_NODES.map((n, i) => ({ key: 'l' + n.id, name: n.id, x: X[i], y: TUN_ROW.top, stack: n.stack, hidden: n.stack === 'v4' }));
+  const links = [];
+  for (let i = 0; i < TUN_NODES.length - 1; i++) {
+    const a = TUN_NODES[i], b = TUN_NODES[i + 1];
+    links.push({ a: 'p' + a.id, b: 'p' + b.id, kind: a.stack === 'v4' || b.stack === 'v4' ? 'v4' : 'v6' });
+  }
+  const visible = TUN_NODES.filter(n => n.stack !== 'v4');
+  for (let i = 0; i < visible.length - 1; i++) {
+    const a = visible[i], b = visible[i + 1];
+    const isTunnel = tunnels.some(t => t.entry === a.id && t.exit === b.id);
+    links.push(isTunnel
+      ? { a: 'l' + a.id, b: 'l' + b.id, kind: 'tunnel', label: 'IPv4 tunnel (IPv6 มองเป็น link เดียว)' }
+      : { a: 'l' + a.id, b: 'l' + b.id, kind: 'v6' });
+  }
+  return {
+    zones: [
+      { ...TUN_ZONE_TOP, label: 'Logical view: มุมมองของ IPv6' },
+      { ...TUN_ZONE_BOTTOM, label: 'Physical view: เส้นทางจริง ผ่าน IPv4 Router C และ D' },
+    ],
+    nodes: [...logi, ...phys],
+    links,
+  };
+}
+
+const both = (...ps) => Promise.all(ps);
+
+// ----- สไลด์ 4-58: Transition from IPv4 to IPv6 / packet within a packet -----
+function flow4_58(R, P, anim) {
+  const { hops } = computeTunnelHops();
+  const v6 = tunLayers(hops[0].layers, { detail: 'mini' });
+  const wrapped = tunLayers(hops[1].layers, { detail: 'mini' });
+  const ctx = {};
+  return [
+    // ขั้นที่ 1: อัปเกรด Router ทั้งโลกพร้อมกันไม่ได้
+    async say => {
+      say(`Router บน Internet มีเป็นล้านตัว <b>อัปเกรดเป็น IPv6 พร้อมกันในวันเดียวไม่ได้</b> (ไม่มี "flag day") —
+           ช่วงเปลี่ยนผ่านจึงมีทั้ง Router ${ipSpan('IPv6/v4', 'v6')} และ Router ที่รู้จักแค่ ${ipSpan('IPv4', 'ipv4')} ทำงานปนกัน`);
+      for (const [key, tone] of [['sR1', 'v6'], ['sR2', 'v4'], ['sR3', 'v6']]) {
+        R.pulse(key, tone);
+        await anim.wait(380);
+      }
+      await anim.wait(500);
+    },
+
+    // ขั้นที่ 2: โครงสร้างของ IPv6 datagram
+    async say => {
+      ctx.big = R.createPacket(null, BIG_V6, { at: { x: 600, y: 650 }, anchor: 'bottom', fs: 22, envelope: false });
+      P.showPackets([{ label: 'IPv6 datagram', layers: BIG_V6 }]);
+      say(`ต้นทางสร้าง <b class="v6">IPv6 datagram</b> = IPv6 header fields + IPv6 source/dest address (128 bit)
+           + payload (UDP/TCP segment)`);
+      await both(R.appear(ctx.big), R.revealRows(ctx.big));
+    },
+
+    // ขั้นที่ 3: ส่ง IPv6 ตรงๆ ให้ Router IPv4 → อ่านไม่ออก
+    async say => {
+      ctx.p = R.createPacket('sR1', v6);
+      say(`ถ้า R1 ส่ง IPv6 datagram ตรงๆ ไปให้ R2 ซึ่งรู้จักแค่ ${ipSpan('IPv4', 'ipv4')} ...`);
+      await R.appear(ctx.p);
+      await R.move(ctx.p, ['sR1', 'sR2']);
+      R.pulse('sR2', 'err');
+      R.setTone(ctx.p, 'err');
+      ctx.q = R.question(650, 205, 'อ่าน IPv6 ไม่ออก!');
+      say(`R2 <span class="err"><b>อ่าน IPv6 header ไม่ออก</b></span> จึงส่งต่อไม่ได้ —
+           แล้ว IPv6 datagram จะข้ามเครือข่าย IPv4 ไปได้อย่างไร?`);
+      await R.shake(ctx.p);
+      await R.fade(ctx.p);
+    },
+
+    // ขั้นที่ 4: วิธีแก้ = packet within a packet
+    async say => {
+      ctx.q.remove();
+      say(`วิธีแก้คือ <b>Tunneling</b>: นำ IPv6 datagram <b>ทั้งก้อน</b> ไปเป็น payload ของ <b class="ipv4">IPv4 datagram</b>
+           แล้วเติม IPv4 header ไว้ด้านหน้า — "packet within a packet"`);
+      await R.encapsulate(ctx.big, BIG_V4);
+      P.showPackets([{ label: 'IPv4 datagram (มี IPv6 datagram อยู่ข้างใน)', layers: BIG_V4 }]);
+      const outer = R.layerBox(ctx.big, 0), inner = R.layerBox(ctx.big, 1);
+      R.annotate(outer.x + outer.w + 20, inner.y + inner.h / 2 - 6, [[['← IPv4 payload', 'ipv4']], [['= IPv6 datagram ทั้งก้อน', 'v6']]]);
+      R.annotate(outer.x - 20, outer.y + 44, [[['packet within', 'hl']], [['a packet', 'hl']]], 'end');
+      await anim.wait(1000);
+    },
+
+    // ขั้นที่ 5: ห่อแล้วส่งใหม่ — R2 เห็นแค่ IPv4 header
+    async say => {
+      ctx.p = R.createPacket('sR1', v6);
+      say(`ลองใหม่: R1 (IPv6/v4) <b>ห่อ</b> IPv6 datagram ไว้ใน IPv4 datagram ก่อนส่ง (encapsulation)`);
+      await R.appear(ctx.p);
+      R.pulse('sR1', 'v4');
+      await R.encapsulate(ctx.p, wrapped);
+      await R.move(ctx.p, ['sR1', 'sR2']);
+      R.pulse('sR2', 'v4');
+      say(`R2 เห็นแค่ <b class="ipv4">IPv4 header</b> จึงส่งต่อได้ตามปกติ — ไม่ต้องรู้เลยว่าข้างในเป็น IPv6`);
+      await R.move(ctx.p, ['sR2', 'sR3']);
+    },
+
+    // ขั้นที่ 6: ปลายทางแกะ IPv4 header ออก
+    async say => {
+      R.pulse('sR3', 'v6');
+      say(`R3 แกะ IPv4 header ออก (decapsulation) ได้ IPv6 datagram ก้อนเดิมคืนมา — นี่คือ <b>Tunneling</b>
+           ซึ่งใช้แพร่หลายในงานอื่นด้วย เช่น เครือข่าย 4G/5G`);
+      await R.decapsulate(ctx.p, v6);
+      await anim.wait(1200);
+    },
+  ];
+}
+
+// ----- สไลด์ 4-59: Ethernet เทียบกับ IPv4 network ที่คั่นระหว่าง IPv6 Router -----
+function flow4_59(R, P, anim) {
+  const { hops } = computeTunnelHops();
+  const v6 = tunLayers(hops[0].layers);
+  const framed = tunLayers([{ kind: 'l2' }, ...hops[0].layers]);
+  const ctx = { top: v6, bot: v6 };
+  const show = () => P.showPackets([
+    { label: 'แถวบน: B–E ต่อกันด้วย Ethernet', layers: ctx.top },
+    { label: 'แถวล่าง: B–E คั่นด้วย IPv4 network', layers: ctx.bot },
+  ]);
+  return [
+    async say => {
+      ctx.t = R.createPacket('tA', v6);
+      ctx.b = R.createPacket('bA', v6);
+      show();
+      say(`ทั้ง 2 แถว: A ส่ง <b class="v6">IPv6 datagram</b> (src: A, dest: F) ไปที่ Router B`);
+      await both(R.appear(ctx.t), R.appear(ctx.b));
+      await both(R.move(ctx.t, ['tA', 'tB']), R.move(ctx.b, ['bA', 'bB']));
+    },
+
+    async say => {
+      say(`แถวบน (กรณีปกติ): B ใส่ IPv6 datagram เป็น payload ของ <b class="l2">Link-layer frame</b>
+           แล้วส่งข้ามสาย <b class="l2">Ethernet</b> ไปหา E`);
+      R.pulse('tB', 'l2');
+      await R.encapsulate(ctx.t, framed);
+      ctx.top = framed;
+      show();
+      await R.move(ctx.t, ['tB', 'tE']);
+    },
+
+    async say => {
+      say(`E แกะ frame ออก ได้ IPv6 datagram เดิม แล้วส่งต่อให้ F —
+           <b>"the usual"</b>: datagram เดินทางเป็น payload ใน link-layer frame`);
+      R.pulse('tE', 'l2');
+      await R.decapsulate(ctx.t, v6);
+      ctx.top = v6;
+      show();
+      await R.move(ctx.t, ['tE', 'tF']);
+      R.pulse('tF', 'v6');
+    },
+
+    async say => {
+      say(`แถวล่าง: ระหว่าง B กับ E เป็น <b class="ipv4">IPv4 network</b> — Router ข้างในรู้จักแค่ IPv4
+           จึง<span class="err"><b>อ่าน IPv6 datagram ไม่ออก</b></span>`);
+      await R.move(ctx.b, ['bB', 'bGate']);
+      R.setTone(ctx.b, 'err');
+      R.question(560, 470, 'IPv4 Router อ่าน IPv6 ไม่ออก!');
+      await R.shake(ctx.b);
+    },
+
+    async say => {
+      say(`แต่ B และ E เป็น Router แบบ <b>IPv6/v4</b> (dual-stack) รู้จักทั้ง 2 แบบ → ใช้เป็น "ปากอุโมงค์"
+           ส่ง IPv6 ข้าม IPv4 network ได้ (ดูต่อสไลด์ 4-60)`);
+      R.setHot(['bB', 'bE'], true);
+      R.pulse('bB', 'v4');
+      R.pulse('bE', 'v4');
+      await anim.wait(1800);
+    },
+  ];
+}
+
+// ----- สไลด์ 4-60: Tunneling = encapsulation (เทียบ link-layer frame กับ IPv4 tunnel) -----
+function flow4_60(R, P, anim) {
+  const { hops } = computeTunnelHops();
+  const v6 = tunLayers(hops[0].layers);
+  const framed = tunLayers([{ kind: 'l2' }, ...hops[0].layers]);
+  const tunneled = tunLayers(hops[1].layers);
+  const outer = hops[1].layers[0];
+  const ctx = { top: v6, bot: v6 };
+  const show = () => P.showPackets([
+    { label: 'แถวบน: B–E ผ่าน Ethernet (Link-layer frame)', layers: ctx.top },
+    { label: 'แถวล่าง: B–E ผ่าน IPv4 tunnel', layers: ctx.bot },
+  ]);
+  return [
+    async say => {
+      ctx.t = R.createPacket('tA', v6);
+      ctx.b = R.createPacket('bA', v6);
+      show();
+      say(`ทั้ง 2 แถว: A ส่ง <b class="v6">IPv6 datagram</b> (src: A, dest: F) ไปที่ B`);
+      await both(R.appear(ctx.t), R.appear(ctx.b));
+      await both(R.move(ctx.t, ['tA', 'tB']), R.move(ctx.b, ['bA', 'bB']));
+    },
+
+    async say => {
+      say(`ที่ B — แถวบน: ใส่ใน <b class="l2">Link-layer frame</b> | แถวล่าง: ใส่ใน <b class="ipv4">IPv4 datagram</b>
+           (src: ${outer.src}, dest: ${outer.dst}, protocol: ${outer.proto} = ข้างในเป็น IPv6) — เป็น <b>encapsulation</b> แบบเดียวกัน`);
+      R.pulse('tB', 'l2');
+      R.pulse('bB', 'v4');
+      await both(R.encapsulate(ctx.t, framed), R.encapsulate(ctx.b, tunneled));
+      ctx.top = framed;
+      ctx.bot = tunneled;
+      show();
+    },
+
+    async say => {
+      say(`วิ่งจาก B ไป E พร้อมกัน — สำหรับ IPv6 แล้ว <b class="ipv4">IPv4 tunnel</b> ก็เหมือน "สาย link" เส้นหนึ่งที่ต่อ B กับ E โดยตรง`);
+      R.setPipe('bB', 'bE', true);
+      await both(R.move(ctx.t, ['tB', 'tE']), R.move(ctx.b, ['bB', 'bE']));
+      R.setPipe('bB', 'bE', false);
+    },
+
+    async say => {
+      say(`ที่ E แกะส่วนที่ห่อออก (decapsulation) — ทั้ง 2 แถวได้ IPv6 datagram ก้อนเดิม (src: A, dest: F) ไม่เปลี่ยนเลย`);
+      R.pulse('tE', 'l2');
+      R.pulse('bE', 'v4');
+      await both(R.decapsulate(ctx.t, v6), R.decapsulate(ctx.b, v6));
+      ctx.top = ctx.bot = v6;
+      show();
+    },
+
+    async say => {
+      say(`ถึง F เหมือนกันทั้ง 2 แถว — <b>Tunneling</b>: IPv6 datagram เป็น payload ของ IPv4 datagram
+           เหมือนที่ datagram ปกติเป็น payload ของ link-layer frame`);
+      await both(R.move(ctx.t, ['tE', 'tF']), R.move(ctx.b, ['bE', 'bF']));
+      R.pulse('tF', 'v6');
+      R.pulse('bF', 'v6');
+      await anim.wait(1200);
+    },
+  ];
+}
+
+// ----- สไลด์ 4-61: Physical view เทียบกับ Logical view (เดินทีละ hop A-to-B ... E-to-F) -----
+function flow4_61(R, P, anim) {
+  const { hops, tunnels } = computeTunnelHops();
+  const [tun] = tunnels;
+  const v6 = hops[0].layers;
+  const v4 = hops[1].layers[0];
+  const ctx = {};
+  const show = () => P.showPackets([
+    { label: 'Physical view: Packet บนสายจริง', layers: ctx.physLayers },
+    { label: 'Logical view: มุมมองของ IPv6', layers: ctx.logiLayers },
+  ]);
+  // เดิน 1 hop พร้อมกันทั้ง 2 แถว (แถวบนวิ่งผ่านจุดซ่อนของ C, D ในท่อ ให้ตรงกับแถวล่าง)
+  const hop = i => {
+    const h = hops[i];
+    P.setHops(hops.slice(0, i + 1), i);
+    return both(R.move(ctx.p, ['p' + h.from, 'p' + h.to]), R.move(ctx.l, ['l' + h.from, 'l' + h.to]));
+  };
+  return [
+    async say => {
+      ctx.physLayers = ctx.logiLayers = tunLayers(v6);
+      ctx.p = R.createPacket('pA', ctx.physLayers);
+      ctx.l = R.createPacket('lA', ctx.logiLayers);
+      show();
+      say(`A สร้าง <b class="v6">IPv6 datagram</b>: flow: X, src: A, dest: F + data แล้วส่งให้ B —
+           hop <b>A-to-B</b> เป็น IPv6 ล้วน`);
+      await both(R.appear(ctx.p), R.appear(ctx.l));
+      await hop(0);
+    },
+
+    async say => {
+      say(`B (IPv6/v4) คือ<b>ทางเข้า Tunnel</b>: ห่อ IPv6 datagram ทั้งก้อนไว้ใน IPv4 datagram — IPv4 header:
+           ${ipSpan(`src: ${v4.src}, dest: ${v4.dst}`, 'ipv4')}, protocol: ${v4.proto} (= payload เป็น IPv6)`);
+      R.pulse('pB', 'v4');
+      R.pulse('lB', 'v6');
+      R.setPipe('lB', 'lE', true);
+      ctx.physLayers = tunLayers(hops[1].layers);
+      await R.encapsulate(ctx.p, ctx.physLayers);
+      show();
+    },
+
+    async say => {
+      say(`<b>B-to-C</b>: บนสายจริงเป็น "IPv6 inside IPv4" — ส่วน Logical view (มุมมองของ IPv6)
+           เห็นว่า Packet กำลังวิ่งอยู่ใน IPv4 tunnel`);
+      await hop(1);
+    },
+
+    async say => {
+      R.pulse('pC', 'v4');
+      say(`C เป็น Router IPv4 ธรรมดา: อ่านแค่ <b class="ipv4">IPv4 header (dest: ${v4.dst})</b> แล้วส่งต่อ —
+           ไม่รู้เลยว่าข้างในมี IPv6 (<b>C-to-D</b>)`);
+      await hop(2);
+    },
+
+    async say => {
+      R.pulse('pD', 'v4');
+      say(`D ก็เช่นกัน: ดูแค่ dest: ${v4.dst} แล้วส่งต่อไปที่ ${v4.dst} (<b>D-to-E</b>) — header ข้างในยังเหมือนเดิมทุกอย่าง`);
+      await hop(3);
+    },
+
+    async say => {
+      say(`E (IPv6/v4) คือ<b>ทางออก Tunnel</b>: เห็น protocol: ${v4.proto} จึงรู้ว่า payload เป็น IPv6
+           → แกะ IPv4 header ออก (decapsulation)`);
+      R.pulse('pE', 'v4');
+      R.pulse('lE', 'v6');
+      ctx.physLayers = tunLayers(hops[4].layers);
+      await R.decapsulate(ctx.p, ctx.physLayers);
+      R.setPipe('lB', 'lE', false);
+      show();
+    },
+
+    async say => {
+      say(`<b>E-to-F</b>: กลับมาเป็น IPv6 ล้วน ส่งต่อให้ F — ถึงปลายทางแล้ว`);
+      await hop(4);
+      R.pulse('pF', 'v6');
+      R.pulse('lF', 'v6');
+    },
+
+    async say => {
+      ctx.physLayers = ctx.logiLayers = tunLayers(v6, { hl: ['v6'] });
+      R.setLayers(ctx.p, ctx.physLayers);
+      R.setLayers(ctx.l, ctx.logiLayers);
+      say(`<b>สังเกต Source/Destination!</b> IPv6 header ข้างใน (${ipSpan('src: A, dest: F', 'v6')})
+           <b>ไม่เปลี่ยนเลยตลอดทาง</b> ส่วน IPv4 header (${ipSpan(`src: ${tun.entry}, dest: ${tun.exit}`, 'ipv4')})
+           มีอยู่แค่ช่วงใน tunnel เท่านั้น`);
+      show();
+      P.setHops(hops, -1, { hlInner: true });
+      await anim.wait(2000);
+    },
+  ];
+}
+
+const TUN_SCENES = [
+  {
+    id: '4-58', layout: layout4_58, flow: flow4_58,
+    explain: '<b>Transition from IPv4 to IPv6</b>: Router ทั่วโลกอัปเกรดพร้อมกันไม่ได้ (ไม่มี "flag day") จึงใช้ <b>Tunneling</b> — ห่อ IPv6 datagram ทั้งก้อนเป็น payload ของ IPv4 datagram ("packet within a packet")',
+  },
+  {
+    id: '4-59', flow: flow4_59,
+    layout: () => layoutTwoRows('v4net', 'IPv4 network คั่นกลางระหว่าง IPv6 Router 2 ตัว', 'IPv4 network'),
+    explain: '<b>Ethernet เทียบกับ IPv4 network</b>: แถวบน Router IPv6 2 ตัวต่อกันด้วย Ethernet (กรณีปกติ) · แถวล่างมี IPv4 network คั่นกลาง โดย B และ E เป็น IPv6/v4',
+  },
+  {
+    id: '4-60', flow: flow4_60,
+    layout: () => layoutTwoRows('tunnel', 'IPv4 tunnel เชื่อม IPv6 Router 2 ตัว', 'IPv4 tunnel'),
+    explain: '<b>Tunneling and encapsulation</b>: IPv4 tunnel ห่อ IPv6 datagram แบบเดียวกับที่ link-layer frame ห่อ datagram — B และ E มองว่า tunnel เป็น link เส้นเดียว',
+  },
+  {
+    id: '4-61', layout: layout4_61, flow: flow4_61, hopTable: true,
+    explain: '<b>Physical view เทียบกับ Logical view</b>: IPv6 เห็นแค่ A–B–tunnel–E–F แต่บนสายจริง Packet วิ่งผ่าน IPv4 Router C และ D — สังเกต src/dest ทั้ง 2 ชั้น',
+  },
+];
+
+// แผงด้านขวา: header ของ Packet ที่กำลังวิ่ง + ตาราง hop (เฉพาะสไลด์ 4-61)
+class TunnelPanel {
+  constructor() {
+    this.tag = $('#tunSceneTag');
+    this.explain = $('#tunExplain');
+    this.insp = $('#tunInspector');
+    this.hopWrap = $('#tunHopWrap');
+    this.hopBody = $('#tunHopTable tbody');
+    this.lastHtml = [];
+  }
+
+  setScene(i) {
+    const s = TUN_SCENES[i];
+    this.tag.textContent = `สไลด์ ${s.id}`;
+    this.explain.innerHTML = s.explain;
+    this.hopWrap.hidden = !s.hopTable;
+    this.hopWrap.scrollTop = this.hopWrap.closest('.panel').scrollTop = 0;
+    this.insp.innerHTML = `<p class="insp-empty">กดปุ่ม <b>${s.id}</b> ด้านบน (หรือปุ่ม ${i + 1}) เพื่อเล่น Scene นี้ — header ของ Packet จะแสดงที่นี่</p>`;
+    this.lastHtml = [];
+    this.setHops([], -1);
+  }
+
+  // entries: [{ label, layers }] — layers รูปแบบเดียวกับกล่อง datagram ในผัง
+  showPackets(entries) {
+    const rowHtml = row => rowSegs(row).map(([t, cls]) => (cls ? `<span class="${cls}">${t}</span>` : t)).join('');
+    const nest = (layers, i) => (i >= layers.length ? '' : `<div class="insp-layer k-${layers[i].kind}">${
+      layers[i].rows.map(r => `<div class="insp-row">${rowHtml(r)}</div>`).join('')}${nest(layers, i + 1)}</div>`);
+    const htmls = entries.map(e => `<div class="insp-label">${e.label}</div>${nest(e.layers, 0)}`);
+    // กระพริบเฉพาะรายการที่ header เปลี่ยน
+    this.insp.innerHTML = htmls.map((h, i) => `<div class="insp-entry${h !== this.lastHtml[i] ? ' fresh' : ''}">${h}</div>`).join('');
+    this.lastHtml = htmls;
+  }
+
+  setHops(hops, current, { hlInner = false } = {}) {
+    if (!hops.length) {
+      this.hopBody.innerHTML = '<tr class="empty"><td colspan="4">Packet ยังไม่ออกเดินทาง</td></tr>';
+      return;
+    }
+    this.hopBody.innerHTML = hops.map((h, i) => {
+      const outer = h.layers[0].kind === 'v4' ? h.layers[0] : null;
+      const v6 = h.layers.find(l => l.kind === 'v6');
+      return `<tr class="${i === current ? 'mark-lookup' : ''}">
+        <td class="hop-name">${h.from}-to-${h.to}</td>
+        <td>${outer ? '<span class="ipv4">IPv6 inside IPv4</span>' : '<span class="v6">IPv6</span>'}</td>
+        <td>${outer ? `<span class="ipv4">src: ${outer.src}&ensp;dest: ${outer.dst}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="${hlInner ? 'cell-hit' : ''}"><span class="v6">src: ${v6.src}&ensp;dest: ${v6.dst}</span></td>
+      </tr>`;
+    }).join('');
+    this.keepRowVisible(this.hopBody.rows[current >= 0 ? current : hops.length - 1]);
+  }
+
+  // จอเล็กตาราง (หรือทั้งแผง) อาจต้องเลื่อน — เลื่อนเฉพาะกล่องเหล่านี้ให้เห็นแถว hop ล่าสุด ไม่เลื่อนทั้งหน้า
+  keepRowVisible(tr) {
+    if (!tr) return;
+    const headH = this.hopWrap.querySelector('thead').offsetHeight;
+    for (const [box, top] of [[this.hopWrap, headH], [this.hopWrap.closest('.panel'), 0]]) {
+      const b = box.getBoundingClientRect(), r = tr.getBoundingClientRect();
+      if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+      else if (r.top < b.top + top) box.scrollTop -= b.top + top - r.top;
+    }
+  }
+}
+
+/* =====================================================================
+   ส่วนที่ 12: UI CONTROLLER — ผูกปุ่ม แท็บ คีย์ลัด และโหมดนำเสนอ
    ===================================================================== */
 const $ = sel => document.querySelector(sel);
 
@@ -1973,6 +2969,7 @@ const NAT_ROUTER_NOTE = {
 const NAT_TAG = { static: 'Static NAT', dynamic: 'Dynamic NAT', pat: 'PAT (Overload)' };
 const NAT_IDLE = 'เลือกประเภท NAT ด้านบน แล้วกด <b>"ส่ง Packet"</b> ที่ PC เครื่องใดก็ได้ (หรือกดปุ่ม 1 / 2 / 3)';
 const CMP_IDLE = 'กด <b>"ส่ง Packet"</b> ที่ PC (หรือปุ่ม 1 / 2 / 3) — Packet จะวิ่งพร้อมกันทั้ง 2 ฝั่ง ให้สังเกตว่า <b>Source Address</b> เปลี่ยนหรือไม่';
+const TUN_IDLE = 'เลือก Scene ตามสไลด์ <b>4-58 ถึง 4-61</b> ด้านบน (หรือกดปุ่ม 1–4) — หรือกด <b>"เล่นอัตโนมัติ"</b> เพื่อเล่นต่อกันทั้ง 4 Scene';
 
 // ----- โหมด 1 -----
 const natAnim = new Animator();
@@ -1992,12 +2989,56 @@ const cmpCaption = new CaptionView($('#cmpCaption'));
 const cmpRunner = new StepRunner({ animator: cmpAnim, caption: cmpCaption, onStateChange: updateNextButton });
 cmpV4Stage.setRouterNote('PAT');
 
-let activeTab = 'nat';
-const activeRunner = () => (activeTab === 'nat' ? natRunner : cmpRunner);
+// ----- โหมด 3 -----
+const tunAnim = new Animator();
+const tunStage = new TunnelRenderer($('#tunSvg'), tunAnim);
+const tunPanel = new TunnelPanel();
+const tunCaption = new CaptionView($('#tunCaption'));
+const tunRunner = new StepRunner({ animator: tunAnim, caption: tunCaption, onStateChange: updateNextButton });
+let tunScene = 0;
 
+let activeTab = 'nat';
+const RUNNERS = { nat: natRunner, v6: cmpRunner, tun: tunRunner };
+const activeRunner = () => RUNNERS[activeTab];
+
+// แท็บ NAT / IPv6: i = เครื่อง PC ที่ส่ง, แท็บ Tunneling: i = Scene ที่จะเล่น
 function sendPacket(i) {
   if (activeTab === 'nat') natRunner.enqueue(() => buildNatFlow(i));
-  else cmpRunner.enqueue(() => buildCompareFlow(i));
+  else if (activeTab === 'v6') cmpRunner.enqueue(() => buildCompareFlow(i));
+  else playScene(i);
+}
+
+function buildTunnelFlow(i) {
+  return {
+    onStart: () => showTunnelScene(i),
+    steps: TUN_SCENES[i].flow(tunStage, tunPanel, tunAnim),
+  };
+}
+
+function showTunnelScene(i) {
+  tunScene = i;
+  tunStage.drawScene(TUN_SCENES[i].layout());
+  tunPanel.setScene(i);
+  document.querySelectorAll('#tunSceneSeg button').forEach(b => b.classList.toggle('active', +b.dataset.scene === i));
+}
+
+function resetTunnel(i = tunScene) {
+  tunRunner.reset();
+  tunAnim.cancelAll();
+  showTunnelScene(i);
+  tunCaption.idle(TUN_IDLE);
+}
+
+// เล่น Scene ใหม่ทันที (ยกเลิก Scene ที่เล่นค้างอยู่)
+function playScene(i) {
+  resetTunnel(i);
+  tunRunner.enqueue(() => buildTunnelFlow(i));
+}
+
+// ผู้ใช้เลือก Scene เอง: ถ้าเล่นอัตโนมัติอยู่ ให้เล่น Scene ถัดไปต่อจากที่เลือก
+function pickScene(i) {
+  playScene(i);
+  AutoPlay.nextPc = (i + 1) % TUN_SCENES.length;
 }
 
 function refreshNatSide() {
@@ -2085,6 +3126,7 @@ function setTab(tab) {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $('#view-nat').classList.toggle('active', tab === 'nat');
   $('#view-v6').classList.toggle('active', tab === 'v6');
+  $('#view-tun').classList.toggle('active', tab === 'tun');
   $('#main').scrollTop = 0;
   AutoPlay.restartCycle();
   if (tab === 'v6') AddressSpace.playBars();
@@ -2108,17 +3150,24 @@ function setStepMode(on) {
   } else {
     natRunner.next();
     cmpRunner.next();
+    tunRunner.next();
   }
 }
 
 // ----- เล่นอัตโนมัติ: ส่ง Packet จาก PC1 -> PC2 -> PC3 วนไปเรื่อยๆ ในแท็บที่เปิดอยู่ -----
 // รอให้ flow ก่อนหน้าจบก่อนจึงส่งเครื่องถัดไป และพักนานขึ้นเมื่อครบ 1 รอบ (3 เครื่อง)
+// แท็บ Tunneling: เล่น Scene 4-58 -> 4-61 ต่อกันแล้ววนใหม่
 const AutoPlay = {
   on: false,
   nextPc: 0,
   timer: null,
   GAP_MS: 600,
+  SCENE_GAP_MS: 1500,
   ROUND_GAP_MS: 1800,
+
+  itemCount() {
+    return activeTab === 'tun' ? TUN_SCENES.length : CONFIG.pcs.length;
+  },
 
   toggle() {
     this.on ? this.stop() : this.start();
@@ -2155,9 +3204,9 @@ const AutoPlay = {
       return;
     }
     sendPacket(this.nextPc);
-    this.nextPc = (this.nextPc + 1) % CONFIG.pcs.length;
+    this.nextPc = (this.nextPc + 1) % this.itemCount();
     // รอจน flow ที่เพิ่งส่งจบ แล้วเว้นช่วงสั้นๆ ก่อนส่งเครื่องถัดไป
-    const gap = this.nextPc === 0 ? this.ROUND_GAP_MS : this.GAP_MS;
+    const gap = this.nextPc === 0 ? this.ROUND_GAP_MS : activeTab === 'tun' ? this.SCENE_GAP_MS : this.GAP_MS;
     const waitDone = () => {
       if (!this.on) return;
       if (runner.running) this.timer = setTimeout(waitDone, 150);
@@ -2176,7 +3225,9 @@ const AutoPlay = {
 function resetActiveTab() {
   AutoPlay.stop();
   AutoPlay.restartCycle();
-  activeTab === 'nat' ? resetNat() : resetCompare();
+  if (activeTab === 'nat') resetNat();
+  else if (activeTab === 'v6') resetCompare();
+  else resetTunnel();
 }
 
 function setSpeed(v) {
@@ -2212,6 +3263,7 @@ function poke() {
 function bindUi() {
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   document.querySelectorAll('#natModeSeg button').forEach(b => b.addEventListener('click', () => setNatMode(b.dataset.mode)));
+  document.querySelectorAll('#tunSceneSeg button').forEach(b => b.addEventListener('click', () => pickScene(+b.dataset.scene)));
   $('#speed').addEventListener('input', e => setSpeed(parseFloat(e.target.value)));
   $('#btnAuto').addEventListener('click', () => AutoPlay.toggle());
   $('#btnStepMode').addEventListener('click', () => setStepMode(!Settings.stepMode));
@@ -2243,8 +3295,10 @@ function bindUi() {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const inInput = e.target.tagName === 'INPUT';
     const k = e.key;
-    if (k === '1' || k === '2' || k === '3') {
-      sendPacket(+k - 1);
+    if (/^[1-4]$/.test(k)) {
+      const i = +k - 1;
+      if (activeTab === 'tun') pickScene(i);
+      else if (i < CONFIG.pcs.length) sendPacket(i);
     } else if (k === ' ' || (k === 'ArrowRight' && !inInput)) {
       e.preventDefault();
       activeRunner().next();
@@ -2274,12 +3328,13 @@ function showToast(text, ok) {
 bindUi();
 setNatMode('pat');
 resetCompare();
+resetTunnel(0);
 AddressSpace.init();
 
 if (new URLSearchParams(location.search).has('test')) {
-  const results = natSelfTest();
+  const results = [...natSelfTest(), ...tunnelSelfTest()];
   const passed = results.filter(r => r.pass).length;
-  showToast(`NAT self-test: ผ่าน ${passed}/${results.length}` + (passed === results.length ? '' : ' (ดู Console)'), passed === results.length);
+  showToast(`Self-test (NAT + Tunneling): ผ่าน ${passed}/${results.length}` + (passed === results.length ? '' : ' (ดู Console)'), passed === results.length);
 }
 </script>
 </body>
