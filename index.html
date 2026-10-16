@@ -520,6 +520,7 @@ body.present .caption { font-size: 26px; }
       <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1">
       <output id="speedOut">1.00x</output>
     </label>
+    <button id="btnAuto" class="toggle" aria-pressed="false">เล่นอัตโนมัติ ▶</button>
     <button id="btnStepMode" class="toggle" aria-pressed="false">เล่นทีละขั้น: ปิด</button>
     <button id="btnNext" class="primary" disabled>ขั้นถัดไป ▶</button>
     <button id="btnReset">รีเซ็ต</button>
@@ -563,7 +564,7 @@ body.present .caption { font-size: 26px; }
         </div>
         <p class="hint extra">
           คีย์ลัด: <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> ส่ง Packet ·
-          <kbd>Space</kbd> ขั้นถัดไป · <kbd>S</kbd> เล่นทีละขั้น ·
+          <kbd>A</kbd> เล่นอัตโนมัติ · <kbd>Space</kbd> ขั้นถัดไป · <kbd>S</kbd> เล่นทีละขั้น ·
           <kbd>R</kbd> รีเซ็ต · <kbd>P</kbd> โหมดนำเสนอ
         </p>
       </aside>
@@ -2074,6 +2075,7 @@ function setNatMode(mode) {
   $('#natModeTag').textContent = NAT_TAG[mode];
   $('#natExplain').innerHTML = NAT_EXPLAIN[mode];
   natStage.setRouterNote(NAT_ROUTER_NOTE[mode]);
+  AutoPlay.restartCycle();
   resetNat();
 }
 
@@ -2084,6 +2086,7 @@ function setTab(tab) {
   $('#view-nat').classList.toggle('active', tab === 'nat');
   $('#view-v6').classList.toggle('active', tab === 'v6');
   $('#main').scrollTop = 0;
+  AutoPlay.restartCycle();
   if (tab === 'v6') AddressSpace.playBars();
   updateNextButton();
 }
@@ -2100,10 +2103,80 @@ function setStepMode(on) {
   const btn = $('#btnStepMode');
   btn.setAttribute('aria-pressed', on);
   btn.textContent = `เล่นทีละขั้น: ${on ? 'เปิด' : 'ปิด'}`;
-  if (!on) {
+  if (on) {
+    AutoPlay.stop();
+  } else {
     natRunner.next();
     cmpRunner.next();
   }
+}
+
+// ----- เล่นอัตโนมัติ: ส่ง Packet จาก PC1 -> PC2 -> PC3 วนไปเรื่อยๆ ในแท็บที่เปิดอยู่ -----
+// รอให้ flow ก่อนหน้าจบก่อนจึงส่งเครื่องถัดไป และพักนานขึ้นเมื่อครบ 1 รอบ (3 เครื่อง)
+const AutoPlay = {
+  on: false,
+  nextPc: 0,
+  timer: null,
+  GAP_MS: 600,
+  ROUND_GAP_MS: 1800,
+
+  toggle() {
+    this.on ? this.stop() : this.start();
+  },
+
+  start() {
+    if (Settings.stepMode) setStepMode(false);
+    this.on = true;
+    this.render();
+    this.schedule(0);
+  },
+
+  stop() {
+    this.on = false;
+    clearTimeout(this.timer);
+    this.render();
+  },
+
+  // เริ่มรอบใหม่จาก PC1 (เมื่อรีเซ็ต เปลี่ยนประเภท NAT หรือเปลี่ยนแท็บ)
+  restartCycle() {
+    this.nextPc = 0;
+  },
+
+  schedule(ms) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.tick(), ms / Settings.speed);
+  },
+
+  tick() {
+    if (!this.on) return;
+    const runner = activeRunner();
+    if (runner.running) {
+      this.schedule(250);
+      return;
+    }
+    sendPacket(this.nextPc);
+    this.nextPc = (this.nextPc + 1) % CONFIG.pcs.length;
+    // รอจน flow ที่เพิ่งส่งจบ แล้วเว้นช่วงสั้นๆ ก่อนส่งเครื่องถัดไป
+    const gap = this.nextPc === 0 ? this.ROUND_GAP_MS : this.GAP_MS;
+    const waitDone = () => {
+      if (!this.on) return;
+      if (runner.running) this.timer = setTimeout(waitDone, 150);
+      else this.schedule(gap);
+    };
+    this.timer = setTimeout(waitDone, 150);
+  },
+
+  render() {
+    const btn = $('#btnAuto');
+    btn.setAttribute('aria-pressed', this.on);
+    btn.textContent = this.on ? 'หยุดอัตโนมัติ ■' : 'เล่นอัตโนมัติ ▶';
+  },
+};
+
+function resetActiveTab() {
+  AutoPlay.stop();
+  AutoPlay.restartCycle();
+  activeTab === 'nat' ? resetNat() : resetCompare();
 }
 
 function setSpeed(v) {
@@ -2140,9 +2213,10 @@ function bindUi() {
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   document.querySelectorAll('#natModeSeg button').forEach(b => b.addEventListener('click', () => setNatMode(b.dataset.mode)));
   $('#speed').addEventListener('input', e => setSpeed(parseFloat(e.target.value)));
+  $('#btnAuto').addEventListener('click', () => AutoPlay.toggle());
   $('#btnStepMode').addEventListener('click', () => setStepMode(!Settings.stepMode));
   $('#btnNext').addEventListener('click', () => activeRunner().next());
-  $('#btnReset').addEventListener('click', () => (activeTab === 'nat' ? resetNat() : resetCompare()));
+  $('#btnReset').addEventListener('click', resetActiveTab);
   $('#btnPresent').addEventListener('click', () => setPresent(!document.body.classList.contains('present')));
   $('#btnTimeout').addEventListener('click', () => {
     const n = natEngine.releaseDynamic();
@@ -2175,7 +2249,9 @@ function bindUi() {
       e.preventDefault();
       activeRunner().next();
     } else if (k === 'r' || k === 'R') {
-      activeTab === 'nat' ? resetNat() : resetCompare();
+      resetActiveTab();
+    } else if (k === 'a' || k === 'A') {
+      AutoPlay.toggle();
     } else if (k === 'p' || k === 'P') {
       setPresent(!document.body.classList.contains('present'));
     } else if (k === 's' || k === 'S') {
